@@ -22,6 +22,8 @@ catkin_package(
 
 )
 
+find_package(Ceres REQUIRED)
+include_directories(${CERES_INCLUDE_DIRS})
 
 include_directories(
   ${catkin_INCLUDE_DIRS}
@@ -37,7 +39,7 @@ include_directories(
 add_executable(ar_demo_node src/ar_demo_node.cpp)
 
  target_link_libraries(ar_demo_node
-   ${catkin_LIBRARIES} ${OpenCV_LIBS}
+   ${catkin_LIBRARIES} ${OpenCV_LIBS} ${CERES_LIBRARIES}
  )
 
 

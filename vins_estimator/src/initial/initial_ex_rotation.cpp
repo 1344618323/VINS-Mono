@@ -11,10 +11,30 @@ InitialEXRotation::InitialEXRotation(){
 bool InitialEXRotation::CalibrationExRotation(vector<pair<Vector3d, Vector3d>> corres, Quaterniond delta_q_imu, Matrix3d &calib_ric_result)
 {
     frame_count++;
+    // 自己写了一个solvePnP, 结果为R_{c1 c2}
     Rc.push_back(solveRelativeR(corres));
+    // R_{i1 i2}
     Rimu.push_back(delta_q_imu.toRotationMatrix());
+    // R_{ci} R_{i1 i2} R_{ic} 这个变量是用于设置核函数的
     Rc_g.push_back(ric.inverse() * delta_q_imu * ric);
 
+    /*
+    最小二乘约束：
+    q_{ci}q_{i1 i2}q_{ic} = q_{c1 c2} to  q_{ci}q_{i1 i2} = q_{c1 c2}q_{ci}
+    四元数乘法可以写成矩阵乘法
+    Mat_R(q_{i1 i2})q_{ci} = Mat_L(q_{c1 c2})q_{ci}
+    可以得到一组约束 (Mat_L-Mat_R) q_{ci} = 0
+
+    积攒多组约束有 A = [Mat_L-Mat_R
+                     Mat_L-Mat_R
+                     ...]
+    A q_{ci} = 0
+    SVD 分解求解 q_{ci} 就是 A最小奇异值对应的那个特征向量
+
+    代码中有ric_cov(1) > 0.25 是什么意思呢？
+    ric_cov是按从大到小排序的，也就是说若 ric_cov(1) 太小，就意味着 ric_cov(1) ric_cov(2) 对应的特征向量 都可能是 解，
+    显然解只有一个
+    */
     Eigen::MatrixXd A(frame_count * 4, 4);
     A.setZero();
     int sum_ok = 0;

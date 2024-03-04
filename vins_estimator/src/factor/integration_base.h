@@ -6,6 +6,21 @@
 #include <ceres/ceres.h>
 using namespace Eigen;
 
+/*
+x: p R v ba bg
+noise:[an gn an gn aw gw] why?
+jacobian = dx/dx
+covariance = cov(x,x)
+
+push_back(IMU):
+    propagate：
+        midPointIntegration 预积分积分
+
+repropagate(ba,bg): 重新设置ba、bg，重新计算预积分（并不是用jacobian线性化，而是真的重头计算）
+
+evaluate(x_i,x_j): 计算残差
+*/
+
 class IntegrationBase
 {
   public:
@@ -51,6 +66,9 @@ class IntegrationBase
             propagate(dt_buf[i], acc_buf[i], gyr_buf[i]);
     }
 
+    // dR = \prod_k Exp((w_k -bg)dt)
+    // dv = \sum_k {dR_{ik} (a_k -ba)dt}
+    // dp = \sum_k (dv_{ik} dt + 0.5 dR_{ik}(a_k -ba) dt^2 )
     void midPointIntegration(double _dt, 
                             const Eigen::Vector3d &_acc_0, const Eigen::Vector3d &_gyr_0,
                             const Eigen::Vector3d &_acc_1, const Eigen::Vector3d &_gyr_1,
@@ -177,6 +195,7 @@ class IntegrationBase
         Eigen::Vector3d corrected_delta_v = delta_v + dv_dba * dba + dv_dbg * dbg;
         Eigen::Vector3d corrected_delta_p = delta_p + dp_dba * dba + dp_dbg * dbg;
 
+        // residuals: r_P r_R r_V r_{ba} r_{bg}
         residuals.block<3, 1>(O_P, 0) = Qi.inverse() * (0.5 * G * sum_dt * sum_dt + Pj - Pi - Vi * sum_dt) - corrected_delta_p;
         residuals.block<3, 1>(O_R, 0) = 2 * (corrected_delta_q.inverse() * (Qi.inverse() * Qj)).vec();
         residuals.block<3, 1>(O_V, 0) = Qi.inverse() * (G * sum_dt + Vj - Vi) - corrected_delta_v;

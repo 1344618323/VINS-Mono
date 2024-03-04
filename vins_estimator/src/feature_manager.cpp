@@ -33,6 +33,8 @@ int FeatureManager::getFeatureCount()
 
         it.used_num = it.feature_per_frame.size();
 
+        // 滑窗数组大小为WINDOW_SIZE+1。start_frame不能是WINDOW_SIZE-2（已确定是关键帧） WINDOW_SIZE-1(次新帧，说不准不是关键帧) WINDOW_SIZE(新帧)
+        // 也就是说必须是被关键帧至少看到两次次的特征点才作数
         if (it.used_num >= 2 && it.start_frame < WINDOW_SIZE - 2)
         {
             cnt++;
@@ -42,6 +44,7 @@ int FeatureManager::getFeatureCount()
 }
 
 
+// 查看上一帧 frame_count-1是不是关键帧率
 bool FeatureManager::addFeatureCheckParallax(int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double td)
 {
     ROS_DEBUG("input feature: %d", (int)image.size());
@@ -199,14 +202,27 @@ VectorXd FeatureManager::getDepthVector()
     return dep_vec;
 }
 
+/*
+https://www.cs.cmu.edu/~16385/s17/Slides/11.4_Triangulation.pdf
+$s1R_{21}p_1+t_{21} = s_2p_2$
+后面为了方便，写成$R,t$
+$s_1p_2^{\wedge}Rp_1+p_2^{\wedge}t=0$
+令$s_1p_1=X$ $p_2=p$，有：$p^{\wedge}[R, t]X=0$
+
+代码中 f 就是 p，P就是[R,t]
+注意：p^{\wedge}点秩是2,所以$p^{\wedge}[R, t]的秩也是2,所以一组方程只能提供两个约束
+*/ 
 void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[])
 {
     for (auto &it_per_id : feature)
     {
         it_per_id.used_num = it_per_id.feature_per_frame.size();
+        // 滑窗数组大小为WINDOW_SIZE+1。start_frame不能是WINDOW_SIZE-2（已确定是关键帧） WINDOW_SIZE-1(次新帧，说不准不是关键帧) WINDOW_SIZE(新帧)
+        // 也就是说必须是被关键帧至少看到两次次的特征点才作数
         if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
             continue;
 
+        // 特征点有深度了，就continue
         if (it_per_id.estimated_depth > 0)
             continue;
         int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
@@ -292,6 +308,7 @@ void FeatureManager::removeBackShiftDepth(Eigen::Matrix3d marg_R, Eigen::Vector3
             }
             else
             {
+                // 重新参数化这个特征点
                 Eigen::Vector3d pts_i = uv_i * it->estimated_depth;
                 Eigen::Vector3d w_pts_i = marg_R * pts_i + marg_P;
                 Eigen::Vector3d pts_j = new_R.transpose() * (w_pts_i - new_P);

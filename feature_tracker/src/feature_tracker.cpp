@@ -33,6 +33,7 @@ FeatureTracker::FeatureTracker()
 {
 }
 
+// mask 像素值是0~255。要盖住的是0，不盖的是255
 void FeatureTracker::setMask()
 {
     if(FISHEYE)

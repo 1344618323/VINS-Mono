@@ -1,5 +1,7 @@
 #include "initial_alignment.h"
 
+// 假设所有帧的bg是一个值。通过预积分约束，求解出这个bg
+// 并根据这个bg，重新计算所有帧之间的预积分
 void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
 {
     Matrix3d A;
@@ -9,6 +11,26 @@ void solveGyroscopeBias(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs)
     b.setZero();
     map<double, ImageFrame>::iterator frame_i;
     map<double, ImageFrame>::iterator frame_j;
+    /*
+    有预积分 Dq = q_i^{-1}q_j
+    求解变量为 x=b_g
+    (Dq [1, 0.5 Jx])^{-1}q_i^{-1}q_j = [1, 0, 0, 0]
+    Dq^{-1}q_i^{-1}q_j = [1, 0.5Jx]
+    (Dq^{-1}q_i^{-1}q_j).vec() = 0.5Jx -> 2(Dq^{-1}q_i^{-1}q_j).vec() = Jx
+    累积多帧
+
+    A=[
+        J_{0,1}
+        J_{1,2}
+        J_{k,k+1}
+    ]
+
+    b= [
+        (Dq^{-1}q_i^{-1}q_j).vec() {0,1}
+        (Dq^{-1}q_i^{-1}q_j).vec() {1,2}
+        (Dq^{-1}q_i^{-1}q_j).vec() {k,k+1}
+    ]
+    */
     for (frame_i = all_image_frame.begin(); next(frame_i) != all_image_frame.end(); frame_i++)
     {
         frame_j = next(frame_i);
@@ -122,6 +144,34 @@ void RefineGravity(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vector
     g = g0;
 }
 
+/* 
+依然是用预积分约束
+预积分积出的Dp_{ij}、Dv_{ij}，与用sfm计算的Dp_{ij}、Dv_{ij}差值应该为0
+A [ v_1,
+    v_2,
+    ...,
+    v_n,
+    s,
+    g
+    ]
+    = b
+计算出的g不一定满足||g||=9.8，但也不能太离谱，太离谱就初始化失败；另外计算出的s须大于0
+
+令$\hat{g}$是上一步中求出$g$的方向向量，$b_1,b_2$是与$\hat{g}$正交的向量
+
+$g=[0,0,9.8]^T(\hat{g}+w_1b_1+w_2b_2)$
+
+重新解方程
+A [ v_1,
+    v_2,
+    ...,
+    v_n,
+    s,
+    w_1,
+    w_2
+    ]
+    = b
+*/
 bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, VectorXd &x)
 {
     int all_frame_count = all_image_frame.size();
@@ -148,6 +198,7 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
 
         tmp_A.block<3, 3>(0, 0) = -dt * Matrix3d::Identity();
         tmp_A.block<3, 3>(0, 6) = frame_i->second.R.transpose() * dt * dt / 2 * Matrix3d::Identity();
+        // 为啥/100, https://github.com/HKUST-Aerial-Robotics/VINS-Mono/issues/108, 看起来是数值scale问题
         tmp_A.block<3, 1>(0, 9) = frame_i->second.R.transpose() * (frame_j->second.T - frame_i->second.T) / 100.0;     
         tmp_b.block<3, 1>(0, 0) = frame_j->second.pre_integration->delta_p + frame_i->second.R.transpose() * frame_j->second.R * TIC[0] - TIC[0];
         //cout << "delta_p   " << frame_j->second.pre_integration->delta_p.transpose() << endl;
@@ -198,8 +249,10 @@ bool LinearAlignment(map<double, ImageFrame> &all_image_frame, Vector3d &g, Vect
 
 bool VisualIMUAlignment(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs, Vector3d &g, VectorXd &x)
 {
+    // 假设所有帧的bg是一个值。通过预积分约束，求解出这个bg
     solveGyroscopeBias(all_image_frame, Bgs);
 
+    // 求解 (所有帧的[v])；g；s
     if(LinearAlignment(all_image_frame, g, x))
         return true;
     else 

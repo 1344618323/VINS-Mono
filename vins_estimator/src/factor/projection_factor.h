@@ -7,6 +7,10 @@
 #include "../utility/tic_toc.h"
 #include "../parameters.h"
 
+/*
+fisrt template arg: Number of residuals： 误差是像素 2维
+other template arg: Size of each parameter block: Pi(7);Pj(7);Ex(7);inv_dep(1)
+*/
 class ProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 1>
 {
   public:

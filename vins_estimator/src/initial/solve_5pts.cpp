@@ -201,6 +201,7 @@ bool MotionEstimator::solveRelativeRT(const vector<pair<Vector3d, Vector3d>> &co
             rr.push_back(cv::Point2f(corres[i].second(0), corres[i].second(1)));
         }
         cv::Mat mask;
+        // E = t_{rl}^R_{rl}
         cv::Mat E = cv::findFundamentalMat(ll, rr, cv::FM_RANSAC, 0.3 / 460, 0.99, mask);
         cv::Mat cameraMatrix = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
         cv::Mat rot, trans;
@@ -216,6 +217,7 @@ bool MotionEstimator::solveRelativeRT(const vector<pair<Vector3d, Vector3d>> &co
                 R(i, j) = rot.at<double>(i, j);
         }
 
+        // 求出 t_{lr} R_{lr}
         Rotation = R.transpose();
         Translation = -R.transpose() * T;
         if(inlier_cnt > 12)

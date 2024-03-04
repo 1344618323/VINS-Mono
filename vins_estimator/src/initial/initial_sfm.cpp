@@ -114,6 +114,11 @@ void GlobalSFM::triangulateTwoFrames(int frame0, Eigen::Matrix<double, 3, 4> &Po
 //  c_translation cam_R_w
 // relative_q[i][j]  j_q_i
 // relative_t[i][j]  j_t_ji  (j < i)
+/*
+基于一个基准 l,relative_R,relative_T
+solvepnp与三角化 滑窗 中所有帧的pose与特征点
+最后来个BA：考虑到这是一个7自由度的问题，固定基准帧的位姿（固定6个自由度），并固定最后一帧的位移（固定尺度）
+*/
 bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 			  const Matrix3d relative_R, const Vector3d relative_T,
 			  vector<SFMFeature> &sfm_f, map<int, Vector3d> &sfm_tracked_points)
@@ -230,6 +235,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
 	}
 */
 	//full BA
+	// BA 只优化了帧的位姿
 	ceres::Problem problem;
 	ceres::LocalParameterization* local_parameterization = new ceres::QuaternionParameterization();
 	//cout << " begin full BA " << endl;

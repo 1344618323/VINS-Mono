@@ -16,7 +16,9 @@ using namespace std;
 struct SFMFeature
 {
     bool state;
+	// 特征点id
     int id;
+	// pair.first 帧号； pair.second x,y 归一化平面坐标
     vector<pair<int,Vector2d>> observation;
     double position[3];
     double depth;

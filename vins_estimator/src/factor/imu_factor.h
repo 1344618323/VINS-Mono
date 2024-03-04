@@ -9,6 +9,10 @@
 
 #include <ceres/ceres.h>
 
+/*
+fisrt template arg: Number of residuals, or ceres::DYNAMIC
+other template arg: Size of each parameter block: Pi(7);Vi Bai Bgi(9);Pj(7);Vj Baj Bgj(9)，一共4个parameter_block
+*/
 class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 {
   public:
@@ -16,6 +20,11 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
     IMUFactor(IntegrationBase* _pre_integration):pre_integration(_pre_integration)
     {
     }
+    /*
+    parameters[4]
+    residuals[15]
+    jacobian[4]: 15*7; 15*9; 15*7; 15*9; 
+    */
     virtual bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
     {
 
@@ -57,10 +66,12 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
         }
 #endif
 
+        // residuals: r_P r_R r_V r_{ba} r_{bg}
         Eigen::Map<Eigen::Matrix<double, 15, 1>> residual(residuals);
         residual = pre_integration->evaluate(Pi, Qi, Vi, Bai, Bgi,
                                             Pj, Qj, Vj, Baj, Bgj);
 
+        // ceres没有设置信息矩阵的操作，LLT分解适用于正定矩阵
         Eigen::Matrix<double, 15, 15> sqrt_info = Eigen::LLT<Eigen::Matrix<double, 15, 15>>(pre_integration->covariance.inverse()).matrixL().transpose();
         //sqrt_info.setIdentity();
         residual = sqrt_info * residual;
@@ -83,18 +94,23 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 ///                ROS_BREAK();
             }
 
+            // d e/d pose_i
             if (jacobians[0])
             {
                 Eigen::Map<Eigen::Matrix<double, 15, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
                 jacobian_pose_i.setZero();
 
+                // dep/dp_i
                 jacobian_pose_i.block<3, 3>(O_P, O_P) = -Qi.inverse().toRotationMatrix();
+                // dep/dR_i
                 jacobian_pose_i.block<3, 3>(O_P, O_R) = Utility::skewSymmetric(Qi.inverse() * (0.5 * G * sum_dt * sum_dt + Pj - Pi - Vi * sum_dt));
 
 #if 0
             jacobian_pose_i.block<3, 3>(O_R, O_R) = -(Qj.inverse() * Qi).toRotationMatrix();
 #else
+                // eR'=eR+deR/dbg(bgi-bg_{base})
                 Eigen::Quaterniond corrected_delta_q = pre_integration->delta_q * Utility::deltaQ(dq_dbg * (Bgi - pre_integration->linearized_bg));
+                // deR/dR_i
                 jacobian_pose_i.block<3, 3>(O_R, O_R) = -(Utility::Qleft(Qj.inverse() * Qi) * Utility::Qright(corrected_delta_q)).bottomRightCorner<3, 3>();
 #endif
 

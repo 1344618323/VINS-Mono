@@ -22,6 +22,7 @@ struct ResidualBlockInfo
     ceres::CostFunction *cost_function;
     ceres::LossFunction *loss_function;
     std::vector<double *> parameter_blocks;
+    // drop_set 记录 parameter_blocks要被边缘化的索引：比如parameter_blocks.size()=4,而drop_set={0,1},则parameter_blocks[0],parameter_blocks[1]要被边缘化
     std::vector<int> drop_set;
 
     double **raw_jacobians;
@@ -56,9 +57,18 @@ class MarginalizationInfo
 
     std::vector<ResidualBlockInfo *> factors;
     int m, n;
+    // 参数块起始地址为ResidualBlockInfo.parameter_blocks
+    // map[参数块起始地址] = 参数块size
     std::unordered_map<long, int> parameter_block_size; //global size
     int sum_block_size;
+    /*
+    分阶段：
+    stage1(addResidualBlockInfo)： map[要边缘化的参数块的起始地址] = 0
+    stage2(marginalize): map[要边缘化的参数块的起始地址] = 从0开始加 参数块localsize，截止为pos
+                        map[要保留的参数块的起始地址] = pose~所有参数块的localsize
+    */ 
     std::unordered_map<long, int> parameter_block_idx; //local size
+    // map[参数块起始地址] = 参数块数据（深度拷贝）
     std::unordered_map<long, double *> parameter_block_data;
 
     std::vector<int> keep_block_size; //global size

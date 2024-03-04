@@ -15,6 +15,7 @@ using namespace Eigen;
 
 #include "parameters.h"
 
+// 描述feature在frame中的数据
 class FeaturePerFrame
 {
   public:
@@ -41,6 +42,7 @@ class FeaturePerFrame
     double dep_gradient;
 };
 
+// 某Id的feature在各frame中的数据
 class FeaturePerId
 {
   public:

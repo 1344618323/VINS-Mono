@@ -90,6 +90,7 @@ void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block
 {
     factors.emplace_back(residual_block_info);
 
+    // 举个例子，如果ResidualBlockInfo buildfromIMU，parameter_blocks.size()=4, parameter_block_sizes=[7, 9, 7, 9]
     std::vector<double *> &parameter_blocks = residual_block_info->parameter_blocks;
     std::vector<int> parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes();
 
@@ -97,16 +98,19 @@ void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block
     {
         double *addr = parameter_blocks[i];
         int size = parameter_block_sizes[i];
+        // map[parameter_blocks[i]起始地址] = parameter_blocks[i] 参数大小
         parameter_block_size[reinterpret_cast<long>(addr)] = size;
     }
 
     for (int i = 0; i < static_cast<int>(residual_block_info->drop_set.size()); i++)
     {
+        // map[parameter_blocks[要被边缘化的索引]起始地址] = 0
         double *addr = parameter_blocks[residual_block_info->drop_set[i]];
         parameter_block_idx[reinterpret_cast<long>(addr)] = 0;
     }
 }
 
+// 计算 边缘边 的残差，雅可比矩阵
 void MarginalizationInfo::preMarginalize()
 {
     for (auto it : factors)
@@ -141,10 +145,13 @@ int MarginalizationInfo::globalSize(int size) const
 void* ThreadsConstructA(void* threadsstruct)
 {
     ThreadsStruct* p = ((ThreadsStruct*)threadsstruct);
+    // 遍历factor
     for (auto it : p->sub_factors)
     {
+        // 遍历每个factor的参数块
         for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
         {
+            // idx_i 在A中的索引
             int idx_i = p->parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[i])];
             int size_i = p->parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[i])];
             if (size_i == 7)
@@ -152,6 +159,7 @@ void* ThreadsConstructA(void* threadsstruct)
             Eigen::MatrixXd jacobian_i = it->jacobians[i].leftCols(size_i);
             for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++)
             {
+                // idx_j 在 A中索引
                 int idx_j = p->parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[j])];
                 int size_j = p->parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[j])];
                 if (size_j == 7)
@@ -180,6 +188,7 @@ void MarginalizationInfo::marginalize()
         pos += localSize(parameter_block_size[it.first]);
     }
 
+    // 要边缘化的矩阵维度
     m = pos;
 
     for (const auto &it : parameter_block_size)
@@ -191,6 +200,7 @@ void MarginalizationInfo::marginalize()
         }
     }
 
+    // 留下来的矩阵维度
     n = pos - m;
 
     //ROS_DEBUG("marginalization, pos: %d, m: %d, n: %d, size: %d", pos, m, n, (int)parameter_block_idx.size());
@@ -229,6 +239,7 @@ void MarginalizationInfo::marginalize()
     //multi thread
 
 
+    // 多线程组装A，b
     TicToc t_thread_summing;
     pthread_t tids[NUM_THREADS];
     ThreadsStruct threadsstruct[NUM_THREADS];
@@ -281,6 +292,7 @@ void MarginalizationInfo::marginalize()
     b = brr - Arm * Amm_inv * bmm;
 
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes2(A);
+    // >eps 保留原值，<=eps，置成0
     Eigen::VectorXd S = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array(), 0));
     Eigen::VectorXd S_inv = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array().inverse(), 0));
 
@@ -315,6 +327,7 @@ std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map
     }
     sum_block_size = std::accumulate(std::begin(keep_block_size), std::end(keep_block_size), 0);
 
+    // 返回marginalization后的参数块
     return keep_block_addr;
 }
 
@@ -330,6 +343,12 @@ MarginalizationFactor::MarginalizationFactor(MarginalizationInfo* _marginalizati
     set_num_residuals(marginalization_info->n);
 };
 
+/*
+在marginalization中，假设线性化点为$\tilde x$，最后有增量方程：$H\delta x=b \to V\lambda V^T \delta x = b \to \underbrace{V \lambda ^{\frac{1}{2}}}_{J^T}  \underbrace{(V \lambda ^{\frac{1}{2}})^T}_{J} \delta x = \underbrace{b}_{V \lambda ^{\frac{1}{2}} \underbrace{e}_{ \lambda ^{-\frac{1}{2}}V^T b}} \to J^TJ\delta x = -J^Te$，
+其中$J,e$都是在$\tilde x$求得的，$e$是残差，$J=\frac{\partial e}{\partial x}|_{x=\tilde x}$
+
+将这个方程用作先验约束，此时不再改变雅可比矩阵（其实将雅可比矩阵理解成信息矩阵会更好，信息矩阵表示着先验的协方差的逆），先验约束的增量方程为：$J^TJ\delta x = -J^Te'$，但这个$e'$随着变量$x$的改变而改变，有$e'=e(\tilde x+dx)=e(\tilde x)+J dx$
+*/
 bool MarginalizationFactor::Evaluate(double const *const *parameters, double *residuals, double **jacobians) const
 {
     //printf("internal addr,%d, %d\n", (int)parameter_block_sizes().size(), num_residuals());

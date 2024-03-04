@@ -28,10 +28,13 @@ include_directories(
   ${EIGEN3_INCLUDE_DIR}
 )
 
+find_package(Ceres REQUIRED)
+include_directories(${CERES_INCLUDE_DIRS})
+
 add_executable(feature_tracker
     src/feature_tracker_node.cpp
     src/parameters.cpp
     src/feature_tracker.cpp
     )
 
-target_link_libraries(feature_tracker ${catkin_LIBRARIES} ${OpenCV_LIBS})
+target_link_libraries(feature_tracker ${catkin_LIBRARIES} ${OpenCV_LIBS} ${CERES_LIBRARIES})
